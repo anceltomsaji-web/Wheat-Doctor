@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Wheat Doctor — English & Hindi AI Diagnostic System</title>
+  <meta name="description" content="Specialized AI diagnostic prototype for Wheat crops (Triticum aestivum, T. durum, T. dicoccum) - detects Yellow Stripe Rust, Brown Rust, Powdery Mildew, Septoria Blotch in English and Hindi.">
+  <meta name="theme-color" content="#07140E">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" type="image/png" href="/static/icons/favicon.png">
+  <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,600;0,9..144,700;1,9..144,600&family=Outfit:wght@300;400;500;600;700&family=Hind:wght@400;500;600;700&family=Mukta:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="ambient-glow glow-1"></div>
+  <div class="ambient-glow glow-2"></div>
+
+  <main class="app-wrapper">
+    <div class="app-card" id="app">
+      
+      <!-- Top Navigation Bar -->
+      <header class="top-nav">
+        <div class="brand-badge" onclick="goToScreen('lang')">
+          <div class="brand-icon wheat-icon">
+            🌾
+          </div>
+          <div class="brand-text">
+            <span class="app-title" id="nav-brand-title">Wheat Doctor</span>
+            <span class="app-subtitle" id="nav-brand-sub">गेहूं रोग व कुल निदान • AI Prototype</span>
+          </div>
+        </div>
+
+        <div class="nav-actions">
+          <button class="nav-icon-btn mobile-connect-btn" onclick="openMobileModal()" title="Share App & Open on Mobile (Any Network / 4G / 5G)">
+            <span class="global-pulse-dot" id="nav-global-dot"></span>
+            <span style="font-size: 15px;">🌐</span>
+            <span class="mobile-pill" id="nav-share-pill">Share</span>
+          </button>
+          
+          <!-- Bilingual Fast Switcher -->
+          <button class="nav-icon-btn lang-toggle-pill-btn" onclick="toggleBilingualLang()" title="Switch Language / भाषा बदलें">
+            <span class="lang-flag-sm" id="current-lang-flag">🇮🇳</span>
+            <span class="lang-pill" id="current-lang-pill">हिन्दी</span>
+          </button>
+
+          <button class="nav-icon-btn" onclick="toggleHistoryDrawer()" title="Scan History">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <!-- Step Indicator -->
+      <div class="step-bar" id="step-bar">
+        <span class="step-dot" id="dot-1"></span>
+        <span class="step-dot" id="dot-2"></span>
+        <span class="step-dot" id="dot-3"></span>
+      </div>
+
+      <!-- ================= 1. BILINGUAL LANGUAGE SELECTION SCREEN ================= -->
+      <section class="screen active" id="screen-lang">
+        <div class="lang-hero">
+          <div class="wheat-badge-hero">
+            <span class="hero-wheat-emblem">🌾</span>
+          </div>
+          <h1 class="hero-heading" id="txt-lang-welcome">Wheat Doctor (गेहूं डॉक्टर)</h1>
+          <p class="hero-subheading" id="txt-lang-sub">Specialized AI for Wheat Crops, Botanical Taxonomy & Rust Diagnostics</p>
+          <div class="feature-badges">
+            <span class="feat-tag">🌾 Triticum (गेहूं)</span>
+            <span class="feat-tag">🧬 Family: Poaceae</span>
+            <span class="feat-tag">🔥 Rust Heatmaps</span>
+            <span class="feat-tag">🔊 Hindi & English Voice</span>
+          </div>
+        </div>
+
+        <div class="lang-picker-box">
+          <p class="lang-prompt">Select Language • अपनी भाषा चुनें</p>
+          <div class="bilingual-lang-grid" id="lang-grid-container">
+            <!-- Populated with English and Hindi options -->
+          </div>
+        </div>
+
+        <footer class="lang-footer">
+          <span>ICAR / PAU Wheat Pathology Standards • English & Hindi Edition</span>
+        </footer>
+      </section>
+
+      <!-- ================= 2. CAPTURE / WHEAT INPUT SCREEN ================= -->
+      <section class="screen" id="screen-capture">
+        <div class="screen-header">
+          <h2 class="section-title" id="txt-capture-title">Analyze Wheat Leaf Blade</h2>
+          <p class="section-sub" id="txt-capture-sub">Take a photo of the wheat leaf or test with calibrated wheat samples</p>
+        </div>
+
+        <!-- Wheat Variety & Cultivar Selector -->
+        <div class="wheat-variety-selector-card">
+          <div class="wheat-var-header">
+            <span class="var-icon">🌾</span>
+            <span class="var-title" id="txt-var-title">गेहूं की प्रजाति व किस्म का चयन (Cultivar Type)</span>
+          </div>
+          <div class="variety-chips">
+            <button class="var-chip active" id="chip-btn-bread" onclick="selectWheatType('breadWheat', this)">
+              <span class="chip-main" id="chip-main-bread">रोटी गेहूं (Bread)</span>
+              <span class="chip-sub">T. aestivum (6n)</span>
+              <span class="chip-tag" id="chip-tag-bread">रोटी / चपाती</span>
+            </button>
+            <button class="var-chip" id="chip-btn-durum" onclick="selectWheatType('durumWheat', this)">
+              <span class="chip-main" id="chip-main-durum">कठिया (Durum)</span>
+              <span class="chip-sub">T. durum (4n)</span>
+              <span class="chip-tag" id="chip-tag-durum">सूजी / पास्ता</span>
+            </button>
+            <button class="var-chip" id="chip-btn-emmer" onclick="selectWheatType('emmerWheat', this)">
+              <span class="chip-main" id="chip-main-emmer">खापली (Emmer)</span>
+              <span class="chip-sub">T. dicoccum (4n)</span>
+              <span class="chip-tag" id="chip-tag-emmer">प्राचीन अनाज</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Camera Viewfinder (Live Stream) -->
+        <div class="camera-stream-container" id="camera-container" style="display:none;">
+          <video id="webcam-video" autoplay playsinline muted></video>
+          <div class="camera-overlay-frame">
+            <div class="target-crosshair"></div>
+            <div class="corner-reticle top-left"></div>
+            <div class="corner-reticle top-right"></div>
+            <div class="corner-reticle bottom-left"></div>
+            <div class="corner-reticle bottom-right"></div>
+          </div>
+          <div class="camera-controls">
+            <button class="cam-cancel-btn" onclick="stopCamera()">✕ Cancel</button>
+            <button class="cam-snap-btn" onclick="captureLiveSnapshot()" title="Capture Wheat Leaf">
+              <div class="snap-inner"></div>
+            </button>
+            <button class="cam-flip-btn" onclick="switchCameraFacing()" title="Switch Camera">🔄</button>
+          </div>
+        </div>
+
+        <!-- Standard Dropzone -->
+        <div class="upload-dropzone" id="drop-zone" onclick="triggerFileInput()">
+          <div class="dropzone-content">
+            <div class="dropzone-icon">
+              <svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                <circle cx="12" cy="13" r="4"></circle>
+              </svg>
+            </div>
+            <h3 class="dropzone-heading" id="txt-drop-heading">Capture or Upload Wheat Leaf</h3>
+            <p class="dropzone-sub" id="txt-drop-sub">JPG, PNG, WebP • Drag & drop supported</p>
+          </div>
+        </div>
+
+        <input type="file" id="cameraFileInput" accept="image/*" capture="environment" style="display:none;" onchange="handleFileSelected(event)">
+        <input type="file" id="galleryFileInput" accept="image/*" style="display:none;" onchange="handleFileSelected(event)">
+
+        <div class="action-buttons-group">
+          <button class="btn btn-primary" onclick="startLiveCamera()">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="23 7 16 12 23 17 23 7"></polygon>
+              <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+            </svg>
+            <span id="txt-btn-camera">Open Camera</span>
+          </button>
+          <button class="btn btn-secondary" onclick="document.getElementById('galleryFileInput').click()">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+              <circle cx="8.5" cy="8.5" r="1.5"></circle>
+              <polyline points="21 15 16 10 5 21"></polyline>
+            </svg>
+            <span id="txt-btn-gallery">Upload from Gallery</span>
+          </button>
+        </div>
+
+        <!-- 1-Click Interactive Wheat Samples -->
+        <div class="samples-section">
+          <div class="samples-header">
+            <span class="samples-title" id="txt-samples-title">🧪 1-Click Wheat Test Samples</span>
+            <span class="samples-hint" id="txt-samples-hint">Tap any sample to test diagnosis</span>
+          </div>
+          <div class="samples-scroll" id="samples-container">
+            <!-- Populated via JS -->
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= 3. SCANNING & ANALYSIS SCREEN ================= -->
+      <section class="screen" id="screen-scan">
+        <div class="scan-visual-container">
+          <div class="scan-image-frame">
+            <img id="scan-preview-img" src="" alt="Scanning wheat leaf">
+            <div class="scan-radar-beam"></div>
+            <div class="scan-grid-overlay"></div>
+            <div class="scan-hud-corners">
+              <span></span><span></span><span></span><span></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="scan-status-card">
+          <div class="scan-spinner-ring"></div>
+          <h3 class="scan-status-title" id="scan-progress-text">Scanning Wheat Blade Morphology...</h3>
+          <p class="scan-status-sub" id="scan-step-detail">Classifying botanical family, cultivar & fungal rust spores</p>
+          <div class="scan-progress-bar">
+            <div class="scan-progress-fill" id="scan-progress-fill"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= 4. RESULTS & TAXONOMY SCREEN ================= -->
+      <section class="screen" id="screen-result">
+        
+        <!-- Botanical Classification & Family Card -->
+        <div class="taxonomy-banner-card">
+          <div class="taxonomy-badge-row">
+            <span class="taxo-chip crop-chip">🌾 <strong id="res-crop-name">Wheat (गेहूं)</strong></span>
+            <span class="taxo-chip family-chip">🧬 <strong id="res-family-name">Family: Poaceae (घास कुल)</strong></span>
+          </div>
+          <div class="taxonomy-details-grid">
+            <div class="taxo-col">
+              <span class="taxo-lbl" id="lbl-taxo-genus">Genus & Tribe:</span>
+              <span class="taxo-val"><em>Triticum</em> • Triticeae (Pooideae)</span>
+            </div>
+            <div class="taxo-col">
+              <span class="taxo-lbl" id="lbl-taxo-type">Wheat Cultivar Type:</span>
+              <span class="taxo-val" id="res-wheat-type-name">Bread Wheat (Hexaploid, 2n=42)</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="result-top-badge-row">
+          <span class="health-pill" id="res-health-pill">Optimal Health</span>
+          <span class="conf-pill" id="res-conf-pill">98% AI Confidence</span>
+        </div>
+
+        <!-- Leaf Image Viewer with Heatmap Toggles -->
+        <div class="result-media-card">
+          <div class="result-image-box">
+            <img id="res-leaf-image" src="" alt="Diagnosed wheat leaf">
+            <img id="res-heatmap-overlay" src="" alt="Lesion heatmap" style="display:none;">
+            <div class="image-mode-switcher">
+              <button class="mode-btn active" id="btn-mode-raw" onclick="setImageViewMode('raw')">🌿 Wheat Leaf</button>
+              <button class="mode-btn" id="btn-mode-heatmap" onclick="setImageViewMode('heatmap')">🔥 Rust/Lesion Heatmap</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Disease Title & Scientific Name -->
+        <div class="result-diagnosis-header">
+          <h2 class="disease-main-title" id="res-disease-title">Healthy Wheat</h2>
+          <p class="disease-scientific-name" id="res-scientific-name">Triticum aestivum — No Pathogen</p>
+        </div>
+
+        <!-- Infection Severity Meter -->
+        <div class="severity-meter-card">
+          <div class="sev-meter-header">
+            <span class="sev-label" id="txt-sev-heading">Infection Severity</span>
+            <span class="sev-value" id="res-sev-badge">Healthy</span>
+          </div>
+          <div class="sev-bar-track">
+            <div class="sev-bar-fill" id="res-sev-fill" style="width: 0%;"></div>
+          </div>
+          <div class="sev-stats-row">
+            <span class="sev-pct-text"><span id="txt-affected-area">Affected Surface Area:</span> <strong id="res-affected-pct">0.0%</strong></span>
+            <span class="sev-leaf-pixels" id="res-pixel-count">Analyzed: 48,400 pixels</span>
+          </div>
+        </div>
+
+        <!-- Audio Voice Prescription -->
+        <div class="audio-prescription-card">
+          <div class="audio-header-row">
+            <div class="audio-icon-wrap">
+              <span class="audio-pulse-ring"></span>
+              🔊
+            </div>
+            <div class="audio-meta">
+              <h4 class="audio-title" id="txt-voice-title">Audio Diagnosis (Voice Assistant)</h4>
+              <p class="audio-desc" id="txt-voice-status">Tap play to listen to treatment in selected language</p>
+            </div>
+            <button class="audio-play-btn" id="btn-audio-play" onclick="toggleAudioPrescription()" title="Play Treatment Audio">
+              <svg id="icon-play" width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+                <polygon points="5 3 19 12 5 21 5 3"></polygon>
+              </svg>
+              <svg id="icon-pause" width="22" height="22" viewBox="0 0 24 24" fill="currentColor" style="display:none;">
+                <rect x="6" y="4" width="4" height="16"></rect>
+                <rect x="14" y="4" width="4" height="16"></rect>
+              </svg>
+            </button>
+          </div>
+          <div class="audio-wave-anim" id="audio-wave" style="display:none;">
+            <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+          </div>
+        </div>
+
+        <!-- Prescription Details & Management Tabs -->
+        <div class="rx-tabs-container">
+          <div class="rx-tab-nav">
+            <button class="rx-tab-btn active" id="tab-btn-summary" onclick="switchRxTab('summary')">
+              <span id="tab-lbl-summary">📋 Summary</span>
+            </button>
+            <button class="rx-tab-btn" id="tab-btn-chemical" onclick="switchRxTab('chemical')">
+              <span id="tab-lbl-chemical">🧪 Chemical Spray</span>
+            </button>
+            <button class="rx-tab-btn" id="tab-btn-organic" onclick="switchRxTab('organic')">
+              <span id="tab-lbl-organic">🍃 Organic</span>
+            </button>
+            <button class="rx-tab-btn" id="tab-btn-varieties" onclick="switchRxTab('varieties')">
+              <span id="tab-lbl-varieties">🌾 Resistant Varieties</span>
+            </button>
+            <button class="rx-tab-btn" id="tab-btn-prevention" onclick="switchRxTab('prevention')">
+              <span id="tab-lbl-prevention">🛡️ Prevention</span>
+            </button>
+          </div>
+
+          <!-- Tab Content: Summary -->
+          <div class="rx-tab-pane active" id="pane-summary">
+            <div class="rx-info-box">
+              <p class="rx-summary-text" id="res-summary-text">Summary details...</p>
+            </div>
+            <div class="rx-dosage-card">
+              <div class="dosage-header">
+                <span class="dosage-icon">📏</span>
+                <span class="dosage-title" id="txt-dosage-title">Recommended Dosage per Acre:</span>
+              </div>
+              <p class="dosage-text" id="res-dosage-text">Dosage info...</p>
+            </div>
+          </div>
+
+          <!-- Tab Content: Chemical -->
+          <div class="rx-tab-pane" id="pane-chemical">
+            <div class="rx-chemical-box">
+              <div class="chem-header">
+                <span class="chem-badge">🧪 Recommended Fungicide / Treatment</span>
+              </div>
+              <p class="chem-text" id="res-chemical-text">Chemical fungicide prescription...</p>
+            </div>
+          </div>
+
+          <!-- Tab Content: Organic -->
+          <div class="rx-tab-pane" id="pane-organic">
+            <div class="rx-organic-box">
+              <div class="org-header">
+                <span class="org-badge">🍃 Eco-Friendly & Bio-Control</span>
+              </div>
+              <p class="org-text" id="res-organic-text">Organic treatment prescription...</p>
+            </div>
+          </div>
+
+          <!-- Tab Content: Varieties -->
+          <div class="rx-tab-pane" id="pane-varieties">
+            <div class="rx-varieties-list" id="res-varieties-container">
+              <!-- Populated via JS -->
+            </div>
+          </div>
+
+          <!-- Tab Content: Prevention -->
+          <div class="rx-tab-pane" id="pane-prevention">
+            <ul class="prevention-list" id="res-prevention-list">
+              <!-- Populated via JS -->
+            </ul>
+          </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="result-actions-grid">
+          <button class="btn btn-primary" onclick="resetToCapture()">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="1 4 1 10 7 10"></polyline>
+              <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
+            </svg>
+            <span id="txt-btn-scan-again">Scan Another Wheat Leaf</span>
+          </button>
+          <button class="btn btn-secondary" onclick="window.print()">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="6 9 6 2 18 2 18 9"></polyline>
+              <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
+              <rect x="6" y="14" width="12" height="8"></rect>
+            </svg>
+            <span id="txt-btn-save-report">Save / Print Report</span>
+          </button>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <!-- Mobile Share & QR Modal -->
+  <div class="modal-backdrop" id="mobile-modal" style="display:none;" onclick="closeMobileModal(event)">
+    <div class="modal-card" onclick="event.stopPropagation()">
+      <button class="modal-close-btn" onclick="closeMobileModal()">✕</button>
+      <div class="modal-header">
+        <span class="modal-icon">📱</span>
+        <h3>Open Wheat Doctor on Mobile</h3>
+        <p>Scan with your phone's camera (Works on any network / 4G / 5G)</p>
+      </div>
+      <div class="qr-box">
+        <img id="modal-qr-img" src="" alt="QR Code to open Wheat Doctor">
+      </div>
+      <div class="link-copy-box">
+        <input type="text" id="modal-link-input" readonly value="">
+        <button class="btn-copy" onclick="copyShareLink()">📋 Copy</button>
+      </div>
+      <div class="global-tunnel-notice" id="modal-tunnel-status">
+        <span class="online-indicator"></span>
+        <span id="modal-tunnel-text">Connecting to network...</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scan History Drawer -->
+  <div class="drawer-backdrop" id="history-backdrop" style="display:none;" onclick="toggleHistoryDrawer()">
+    <div class="history-drawer" onclick="event.stopPropagation()">
+      <div class="drawer-header">
+        <h3>📋 Scan History</h3>
+        <button class="drawer-close-btn" onclick="toggleHistoryDrawer()">✕</button>
+      </div>
+      <div class="drawer-content" id="history-list">
+        <p class="empty-history">No scans recorded yet. Capture or test a wheat sample!</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Non-Wheat Leaf Rejection Modal -->
+  <div class="modal-backdrop non-wheat-modal" id="modal-not-wheat" style="display:none;" onclick="closeNotWheatModal(event)">
+    <div class="modal-card not-wheat-card" onclick="event.stopPropagation()">
+      <button class="modal-close-btn" onclick="closeNotWheatModal()">✕</button>
+      <div class="not-wheat-icon-wrap">
+        <span class="not-wheat-badge-icon">🌾🚫</span>
+      </div>
+      <h3 class="not-wheat-title" id="not-wheat-modal-title">Not a Wheat Leaf!</h3>
+      <p class="not-wheat-sub" id="not-wheat-modal-sub">The uploaded image is not of a wheat plant (Poaceae family).</p>
+      <div class="not-wheat-detail-box">
+        <div class="alert-row">
+          <span class="alert-icon">⚠️</span>
+          <p class="alert-msg" id="not-wheat-modal-msg">Wheat Doctor is specialized exclusively for Wheat crops (Triticum aestivum, T. durum, T. dicoccum) and foliar rust diagnostics. Please upload a clear photo of a wheat leaf blade.</p>
+        </div>
+      </div>
+      <div class="not-wheat-actions">
+        <button class="btn btn-primary btn-try-wheat" onclick="closeNotWheatModal()">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+            <circle cx="12" cy="13" r="4"></circle>
+          </svg>
+          <span id="not-wheat-btn-text">Upload Wheat Leaf Blade</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <audio id="prescription-audio-element" preload="none"></audio>
+  <script src="/static/vision_engine.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>
