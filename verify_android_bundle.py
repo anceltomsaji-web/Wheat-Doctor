@@ -44,7 +44,12 @@ def verify_all_bundles():
         "static/vision_engine.js",
         "prototype/static/vision_engine.js",
         "PROJECT_REPORT.md",
-        "push_to_github.bat"
+        ".gitattributes",
+        "deploy_github.py",
+        "push_to_github.bat",
+        "start.bat",
+        "start_online.bat",
+        "prototype/start.bat"
     ]
 
     for rel_path in required_files:
@@ -53,6 +58,17 @@ def verify_all_bundles():
         size = os.path.getsize(full_path)
         assert size > 0, f"Empty file: {rel_path}"
         print(f" [OK] {rel_path:<62} ({size:,} bytes)")
+
+    # Verify all Windows .bat files are pure 7-bit ASCII with CRLF line endings and no unescaped '&'
+    for bat_rel in ["push_to_github.bat", "start.bat", "start_online.bat", "prototype/start.bat"]:
+        bat_path = os.path.join(BASE_DIR, bat_rel)
+        with open(bat_path, "rb") as bf:
+            raw = bf.read()
+        assert all(b < 128 for b in raw), f"Non-ASCII byte found in {bat_rel} (breaks cmd.exe byte offset)"
+        assert b"\r\n" in raw and b"\n" not in raw.replace(b"\r\n", b""), f"Non-CRLF line ending found in {bat_rel}"
+        text = raw.decode("ascii")
+        assert "&" not in text, f"Unescaped '&' found in {bat_rel}"
+    print("\n [OK] All Windows .bat launchers verified (pure ASCII, CRLF line endings, zero unescaped '&')")
 
     # Verify standalone index.html uses relative paths for Android WebView & GitHub Pages
     with open(os.path.join(BASE_DIR, "android/app/src/main/assets/www/index.html"), "r", encoding="utf-8") as f:

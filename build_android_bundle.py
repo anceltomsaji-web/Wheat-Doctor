@@ -754,10 +754,112 @@ def build_static_and_android_bundles():
         f.write("")
 
 
+def generate_windows_batch_files():
+    """Ensure all Windows .bat files use pure 7-bit ASCII and strict CRLF (\\r\\n) line endings."""
+    gitattributes = "* text=auto\n*.bat text eol=crlf\n*.cmd text eol=crlf\n"
+    with open(os.path.join(BASE_DIR, ".gitattributes"), "w", encoding="ascii", newline="\n") as f:
+        f.write(gitattributes)
+
+    bat_files = {
+        os.path.join(BASE_DIR, "push_to_github.bat"): (
+            "@echo off\n"
+            "title Wheat Doctor - GitHub Push and Android APK Builder\n"
+            "cd /d \"%~dp0\"\n"
+            "python deploy_github.py %*\n"
+            "echo.\n"
+            "pause\n"
+        ),
+        os.path.join(BASE_DIR, "start.bat"): (
+            "@echo off\n"
+            "title Wheat Doctor AI Server Launcher\n"
+            "echo ========================================================\n"
+            "echo               WHEAT DOCTOR AI (12 Languages)\n"
+            "echo       Wheat Crop, Cultivar and Pathology Diagnostic AI\n"
+            "echo ========================================================\n"
+            "echo.\n"
+            "cd /d \"%~dp0\"\n"
+            "echo Choose launch mode:\n"
+            "echo   [1] Worldwide Public Access (ANY phone/network, 4G, 5G, Remote)\n"
+            "echo   [2] Local Mode (This PC + Local Wi-Fi only)\n"
+            "echo.\n"
+            "set /p mode=\"Enter choice [1 or 2] (Default is 1): \"\n"
+            "\n"
+            "if \"%mode%\"==\"2\" (\n"
+            "    echo.\n"
+            "    echo Launching Local Mode...\n"
+            "    start \"\" http://127.0.0.1:5000\n"
+            "    python app.py\n"
+            ") else (\n"
+            "    echo.\n"
+            "    echo Launching Worldwide Online Mode with Global Tunnel...\n"
+            "    start \"\" http://127.0.0.1:5000\n"
+            "    python app.py --online\n"
+            ")\n"
+            "\n"
+            "pause\n"
+        ),
+        os.path.join(BASE_DIR, "start_online.bat"): (
+            "@echo off\n"
+            "title Wheat Doctor AI - Worldwide Public Access\n"
+            "echo ========================================================\n"
+            "echo          WHEAT DOCTOR AI - WORLDWIDE ONLINE MODE\n"
+            "echo     Foliar Pathology, Rust Diagnostic and Cultivar AI\n"
+            "echo ========================================================\n"
+            "echo.\n"
+            "echo [1/2] Navigating to Wheat Doctor directory...\n"
+            "cd /d \"%~dp0\"\n"
+            "\n"
+            "echo [2/2] Starting Wheat Doctor AI with Global HTTPS Tunnel...\n"
+            "echo.\n"
+            "echo * Note: A secure HTTPS link will be generated below.\n"
+            "echo * Anyone on 4G, 5G, or any Wi-Fi worldwide can open it!\n"
+            "echo.\n"
+            "\n"
+            "python app.py --online\n"
+            "\n"
+            "pause\n"
+        ),
+        os.path.join(BASE_DIR, "prototype", "start.bat"): (
+            "@echo off\n"
+            "title Wheat Doctor Prototype (English and Hindi) Launcher\n"
+            "echo ========================================================\n"
+            "echo        WHEAT DOCTOR PROTOTYPE (English and Hindi)\n"
+            "echo     Wheat Crop, Cultivar and Rust Pathology Diagnostic AI\n"
+            "echo ========================================================\n"
+            "echo.\n"
+            "cd /d \"%~dp0\"\n"
+            "echo Choose launch mode:\n"
+            "echo   [1] Local Mode (This PC + Local Wi-Fi)\n"
+            "echo   [2] Worldwide Public Access (ANY phone/network, 4G, 5G, Remote)\n"
+            "echo.\n"
+            "set /p mode=\"Enter choice [1 or 2] (Default is 1): \"\n"
+            "\n"
+            "if \"%mode%\"==\"2\" (\n"
+            "    echo.\n"
+            "    echo Launching Worldwide Online Mode with Global Tunnel...\n"
+            "    start \"\" http://127.0.0.1:5000\n"
+            "    python app.py --online\n"
+            ") else (\n"
+            "    echo.\n"
+            "    echo Launching Local Mode...\n"
+            "    start \"\" http://127.0.0.1:5000\n"
+            "    python app.py\n"
+            ")\n"
+            "\n"
+            "pause\n"
+        ),
+    }
+
+    for path, content in bat_files.items():
+        with open(path, "w", encoding="ascii", newline="\r\n") as f:
+            f.write(content)
+
+
 if __name__ == "__main__":
     generate_all_icons()
     generate_vision_engines()
     generate_pwa_files()
     build_static_and_android_bundles()
+    generate_windows_batch_files()
     print("[5/5] Bundle generation complete! Ready for Android APK & GitHub deployment.")
 

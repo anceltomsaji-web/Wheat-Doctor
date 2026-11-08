@@ -1,15 +1,14 @@
 @echo off
 title Wheat Doctor AI Server Launcher
-chcp 65001 >nul
 echo ========================================================
-echo               WHEAT DOCTOR AI (गेहूं डॉक्टर)
-echo       Wheat Crop, Cultivar & Pathology Diagnostic AI
+echo               WHEAT DOCTOR AI (12 Languages)
+echo       Wheat Crop, Cultivar and Pathology Diagnostic AI
 echo ========================================================
 echo.
 cd /d "%~dp0"
 echo Choose launch mode:
-echo   [1] 🌍 Worldwide Public Access (ANY phone/network, 4G, 5G, Remote)
-echo   [2] 🏠 Local Mode (This PC + Local Wi-Fi only)
+echo   [1] Worldwide Public Access (ANY phone/network, 4G, 5G, Remote)
+echo   [2] Local Mode (This PC + Local Wi-Fi only)
 echo.
 set /p mode="Enter choice [1 or 2] (Default is 1): "
 

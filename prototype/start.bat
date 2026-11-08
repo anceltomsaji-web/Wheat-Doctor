@@ -1,15 +1,14 @@
 @echo off
-title Wheat Doctor Prototype (English & Hindi) Launcher
-chcp 65001 >nul
+title Wheat Doctor Prototype (English and Hindi) Launcher
 echo ========================================================
-echo        WHEAT DOCTOR PROTOTYPE (गेहूं डॉक्टर - EN/HI)
-echo     Wheat Crop, Cultivar & Rust Pathology Diagnostic AI
+echo        WHEAT DOCTOR PROTOTYPE (English and Hindi)
+echo     Wheat Crop, Cultivar and Rust Pathology Diagnostic AI
 echo ========================================================
 echo.
 cd /d "%~dp0"
 echo Choose launch mode:
-echo   [1] 🏠 Local Mode (This PC + Local Wi-Fi)
-echo   [2] 🌍 Worldwide Public Access (ANY phone/network, 4G, 5G, Remote)
+echo   [1] Local Mode (This PC + Local Wi-Fi)
+echo   [2] Worldwide Public Access (ANY phone/network, 4G, 5G, Remote)
 echo.
 set /p mode="Enter choice [1 or 2] (Default is 1): "
 
