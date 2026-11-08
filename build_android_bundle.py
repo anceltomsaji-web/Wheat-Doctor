@@ -760,3 +760,4 @@ if __name__ == "__main__":
     generate_pwa_files()
     build_static_and_android_bundles()
     print("[5/5] Bundle generation complete! Ready for Android APK & GitHub deployment.")
+

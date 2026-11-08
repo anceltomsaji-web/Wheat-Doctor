@@ -390,3 +390,4 @@ Implemented in `model.py` (lines 1007–1025) and `static/vision_engine.js`.
 1. On your GitHub repository, go to **Settings** -> **Pages** -> Under *Build and deployment*, set **Source** to **GitHub Actions**.
 2. Open `https://<your-username>.github.io/Wheat-Doctor/` in Chrome on your Android phone.
 3. Tap the **📲 Android App** button at the top of the app -> Tap **⚡ Install Wheat Doctor App Now** to add it directly to your Android app drawer!
+
