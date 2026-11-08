@@ -11,6 +11,7 @@ cloudflared.exe
 cloudflared
 
 # Android Gradle Build Outputs & Local SDK Paths
+cmdline-tools/
 android/.gradle/
 android/build/
 android/app/build/
