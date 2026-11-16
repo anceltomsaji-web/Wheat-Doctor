@@ -3,13 +3,20 @@
  * Caches core application shell, styles, vision engine, and calibrated wheat samples
  * for 100% offline field operation on Android phones.
  */
-const CACHE_NAME = 'wheat-doctor-v2.0.0';
+const CACHE_NAME = 'wheat-doctor-v2.1.0';
 const OFFLINE_ASSETS = [
   './',
   './index.html',
   './manifest.json',
   './static/style.css',
   './static/vision_engine.js',
+  './static/wheat_classifier.js',
+  './static/lib/tf.min.js',
+  './static/models/wheat_head.json',
+  './static/models/mobilenet_v2_fv/model.json',
+  './static/models/mobilenet_v2_fv/group1-shard1of3.bin',
+  './static/models/mobilenet_v2_fv/group1-shard2of3.bin',
+  './static/models/mobilenet_v2_fv/group1-shard3of3.bin',
   './static/app.js',
   './static/icons/icon-192.png',
   './static/icons/icon-512.png',
