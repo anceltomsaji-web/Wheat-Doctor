@@ -870,9 +870,31 @@ async function processWheatLeafImage(dataUrl) {
   const isStandaloneApp = window.location.protocol === 'file:' || window.location.hostname.endsWith('github.io');
 
   try {
+    // STEP 0 - Wheat-only gate (same for gallery uploads AND live camera frames, online or offline):
+    // the on-device neural recogniser must confirm a WHEAT plant before any disease analysis runs.
+    let gatePassed = false;
+    if (window.WheatVisionEngine && window.WheatVisionEngine.verifyWheat) {
+      stepText.textContent = appState.lang === 'hi' ? 'पहले जांच: क्या यह गेहूं का पौधा है?...' : 'Checking that this is a wheat plant...';
+      const gate = await window.WheatVisionEngine.verifyWheat(dataUrl);
+      if (gate && gate.isWheat === false) {
+        clearTimeout(timer1);
+        progressFill.style.width = '100%';
+        goToScreen('capture');
+        showNotWheatModal({
+          status: 'error',
+          error_type: gate.errorType || 'NOT_WHEAT_LEAF',
+          is_wheat_leaf: false,
+          message: gate.messageEn,
+          message_hi: gate.messageHi
+        });
+        return;
+      }
+      gatePassed = !!(gate && gate.isWheat && gate.source === 'classifier');
+    }
+
     let result = null;
     if (isStandaloneApp && window.WheatVisionEngine) {
-      result = await window.WheatVisionEngine.analyze(dataUrl, appState.selectedWheatType, appState.lang);
+      result = await window.WheatVisionEngine.analyze(dataUrl, appState.selectedWheatType, appState.lang, { skipValidation: gatePassed });
     } else {
       const response = await fetch('/api/analyze', {
         method: 'POST',
@@ -880,9 +902,11 @@ async function processWheatLeafImage(dataUrl) {
         body: JSON.stringify({
           image: dataUrl,
           lang: appState.lang,
-          wheat_type: appState.selectedWheatType
+          wheat_type: appState.selectedWheatType,
+          skip_validation: gatePassed
         })
       });
+
       if (!response.ok) {
         throw new Error(`Server returned HTTP ${response.status}`);
       }
@@ -933,13 +957,14 @@ async function processWheatLeafImage(dataUrl) {
     } catch (visionErr) {
       console.error('On-device vision error:', visionErr);
     }
-    setTimeout(() => {
-      const fallback = getFallbackWheatResult();
-      appState.currentResult = fallback;
-      renderResult(fallback);
-      saveToScanHistory(fallback, dataUrl);
-      goToScreen('result');
-    }, 400);
+    goToScreen('capture');
+    showNotWheatModal({
+      status: 'error',
+      error_type: 'NOT_WHEAT_LEAF',
+      is_wheat_leaf: false,
+      message: 'Could not verify this image as a wheat plant. Please capture or upload a clear photo of a wheat leaf blade.',
+      message_hi: 'इस फोटो में गेहूं के पौधे की पुष्टि नहीं हो सकी। कृपया गेहूं की पत्ती की साफ फोटो लें।'
+    });
   }
 }
 

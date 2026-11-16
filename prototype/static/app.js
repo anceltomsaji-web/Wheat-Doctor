@@ -467,9 +467,26 @@ function showScanScreen(imgSrc) {
 async function runWheatAnalysis(imagePayload) {
   const isStandaloneApp = window.location.protocol === 'file:' || window.location.hostname.endsWith('github.io');
   try {
+    let gatePassed = false;
+    if (window.WheatVisionEngine && window.WheatVisionEngine.verifyWheat) {
+      const gate = await window.WheatVisionEngine.verifyWheat(imagePayload);
+      if (gate && gate.isWheat === false) {
+        goToScreen('capture');
+        showNotWheatModal({
+          status: 'error',
+          error_type: gate.errorType || 'NOT_WHEAT_LEAF',
+          is_wheat_leaf: false,
+          message: gate.messageEn,
+          message_hi: gate.messageHi
+        });
+        return;
+      }
+      gatePassed = !!(gate && gate.isWheat && gate.source === 'classifier');
+    }
+
     let result = null;
     if (isStandaloneApp && window.WheatVisionEngine) {
-      result = await window.WheatVisionEngine.analyze(imagePayload, appState.selectedWheatType, appState.lang);
+      result = await window.WheatVisionEngine.analyze(imagePayload, appState.selectedWheatType, appState.lang, { skipValidation: gatePassed });
     } else {
       const res = await fetch('/api/analyze', {
         method: 'POST',
@@ -477,7 +494,8 @@ async function runWheatAnalysis(imagePayload) {
         body: JSON.stringify({
           image: imagePayload,
           wheat_type: appState.selectedWheatType,
-          lang: appState.lang
+          lang: appState.lang,
+          skip_validation: gatePassed
         })
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);

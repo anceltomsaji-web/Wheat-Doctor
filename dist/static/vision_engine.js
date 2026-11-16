@@ -1056,8 +1056,9 @@ class WheatVisionEngine {
   }
 
   /**
-   * Validates that the uploaded image belongs to a Wheat plant (Poaceae monocot blade)
-   * and rejects non-plant objects or broadleaf dicot crops (potato, tomato, cucumber, etc.).
+   * Validates that the uploaded or camera-captured image belongs to a Wheat plant
+   * (Poaceae monocot blade) and strictly rejects non-plant objects and normal broadleaf
+   * plants (houseplants, tomato, potato, rose, mango, hibiscus, trees, flowers, etc.).
    */
   static validateWheatLeafImage(imgElement) {
     const size = 120;
@@ -1078,31 +1079,74 @@ class WheatVisionEngine {
     let septoria_tan = 0;
     let green_px = 0;
     let dark_rot = 0;
+    let studio_bg = 0;
+    let non_plant_vivid = 0;
+    let center_green = 0;
+    let border_green = 0;
+    let green_h_sum = 0.0;
+    let green_h_sq = 0.0;
+    let green_s_sum = 0.0;
+    let green_v_sum = 0.0;
+    let green_e_sum = 0.0;
 
-    const angles = [];
-    const magnitudes = [];
+    const num_bins = 18;
+    const hist_r = new Float64Array(num_bins);
+    const hist_g = new Float64Array(num_bins);
+
+    const b_jxx = new Float64Array(36);
+    const b_jyy = new Float64Array(36);
+    const b_jxy = new Float64Array(36);
+    const b_gcnt = new Int32Array(36);
+
+    const row_g = new Float64Array(size);
+    const col_g = new Float64Array(size);
+    let row_trans = 0;
+    let col_trans = 0;
+    const prev_row_g = new Uint8Array(size);
 
     const getR = (x, y) => rgba[(y * size + x) * 4];
     const getG = (x, y) => rgba[(y * size + x) * 4 + 1];
 
     for (let y = 0; y < size; y++) {
+      let prev_g_x = 0;
       for (let x = 0; x < size; x++) {
         const pIdx = (y * size + x) * 4;
         const r = rgba[pIdx];
         const g = rgba[pIdx + 1];
         const b = rgba[pIdx + 2];
+        row_g[y] += g;
+        col_g[x] += g;
         const [h, s, v] = this.rgbToHsv(r, g, b);
+        const ev = epx[y * size + x];
 
         const is_plain_bg = (r > 240 && g > 240 && b > 240) || (r < 20 && g < 20 && b < 20) || (s < 0.04);
-        const is_green = (g >= r * 1.05 && g >= b * 1.05 && g > 30) || (h >= 62 && h <= 170 && s > 0.14);
+        const is_green = (g >= r * 1.05 && g >= b * 1.05 && g > 30) || (h >= 62 && h <= 170 && s > 0.14 && v > 0.12);
         const is_mildew = (!is_plain_bg) && (s < 0.30 && v > 0.45 && Math.abs(r - g) < 28 && Math.abs(g - b) < 28 && (r > 105 || g > 105));
         const is_pycnidia_black = (r < 48 && g < 48 && b < 48 && v < 0.20 && !is_plain_bg);
         const is_stripe_yellow = (h >= 36 && h <= 58 && s > 0.58 && v > 0.48);
         const is_brown_rust = (h >= 12 && h < 35 && s > 0.35 && v > 0.20 && r > b * 1.25);
-        const is_septoria_tan = (h >= 22 && h < 55 && s > 0.22 && v > 0.30 && epx[y * size + x] > 22);
+        const is_septoria_tan = (h >= 22 && h < 55 && s > 0.22 && v > 0.30 && ev > 22);
         const is_dark_rot = (v < 0.25 && r > 30 && g < 50);
 
-        if (is_green) green_px++;
+        if (!is_green && s < 0.20 && v > 0.26 && v < 0.86 && ev < 38) studio_bg++;
+        if ((h < 14 || h > 178) && s > 0.22 && v > 0.22) non_plant_vivid++;
+
+        const g_flag = is_green ? 1 : 0;
+        if (x > 0 && g_flag !== prev_g_x) row_trans++;
+        prev_g_x = g_flag;
+        if (y > 0 && g_flag !== prev_row_g[x]) col_trans++;
+        prev_row_g[x] = g_flag;
+
+        if (is_green) {
+          green_px++;
+          green_h_sum += h;
+          green_h_sq += h * h;
+          green_s_sum += s;
+          green_v_sum += v;
+          green_e_sum += ev;
+          if (x >= 28 && x < 92 && y >= 28 && y < 92) center_green++;
+          if (x < 16 || x >= 104 || y < 16 || y >= 104) border_green++;
+        }
         if (is_stripe_yellow) stripe_yellow++;
         if (is_brown_rust) brown_rust++;
         if (is_mildew) powdery_white++;
@@ -1116,72 +1160,104 @@ class WheatVisionEngine {
                      (getR(x - 1, y - 1) + 2 * getR(x, y - 1) + getR(x + 1, y - 1));
           const mag = Math.sqrt(dx * dx + dy * dy);
           if (mag > 20) {
-            angles.push(Math.atan2(dy, dx));
-            magnitudes.push(mag);
+            const a = ((Math.atan2(dy, dx) % Math.PI) + Math.PI) % Math.PI;
+            const bi = Math.floor(a / (Math.PI / num_bins)) % num_bins;
+            hist_r[bi] += mag;
+          }
+
+          if (is_green) {
+            const gdx = (getG(x + 1, y - 1) + 2 * getG(x + 1, y) + getG(x + 1, y + 1)) -
+                        (getG(x - 1, y - 1) + 2 * getG(x - 1, y) + getG(x - 1, y + 1));
+            const gdy = (getG(x - 1, y + 1) + 2 * getG(x, y + 1) + getG(x + 1, y + 1)) -
+                        (getG(x - 1, y - 1) + 2 * getG(x, y - 1) + getG(x + 1, y - 1));
+            const gmag = Math.sqrt(gdx * gdx + gdy * gdy);
+            if (gmag > 18) {
+              const ga = ((Math.atan2(gdy, gdx) % Math.PI) + Math.PI) % Math.PI;
+              const gbi = Math.floor(ga / (Math.PI / num_bins)) % num_bins;
+              hist_g[gbi] += gmag;
+            }
+            const bidx = Math.floor(y / 20) * 6 + Math.floor(x / 20);
+            b_jxx[bidx] += gdx * gdx;
+            b_jyy[bidx] += gdy * gdy;
+            b_jxy[bidx] += gdx * gdy;
+            b_gcnt[bidx]++;
           }
         }
       }
     }
 
-    const num_bins = 18;
-    const hist = new Float64Array(num_bins);
-    let total_mag = 0;
-    for (let i = 0; i < magnitudes.length; i++) total_mag += magnitudes[i];
-
-    let peak_ratio = 1.0;
-    if (total_mag > 0) {
-      for (let i = 0; i < angles.length; i++) {
-        const a = ((angles[i] % Math.PI) + Math.PI) % Math.PI;
-        const bin = Math.floor(a / (Math.PI / num_bins)) % num_bins;
-        hist[bin] += magnitudes[i];
-      }
-      let maxHist = 0;
-      for (let i = 0; i < num_bins; i++) {
-        if (hist[i] > maxHist) maxHist = hist[i];
-      }
-      peak_ratio = maxHist / ((total_mag / num_bins) + 1e-5);
+    let tot_r = 0, max_r = 0, pk_r = 0;
+    for (let i = 0; i < num_bins; i++) {
+      tot_r += hist_r[i];
+      if (hist_r[i] > max_r) { max_r = hist_r[i]; pk_r = i; }
     }
+    const peak_ratio = tot_r > 0 ? (max_r / ((tot_r / num_bins) + 1e-5)) : 1.0;
+    const cone_r = tot_r > 0
+      ? ((hist_r[pk_r] + hist_r[(pk_r + num_bins - 1) % num_bins] + hist_r[(pk_r + 1) % num_bins]) / (tot_r + 1e-5))
+      : 0.16;
 
-    const row_means = new Float64Array(size);
-    const col_means = new Float64Array(size);
-    for (let y = 0; y < size; y++) {
-      let sum = 0;
-      for (let x = 0; x < size; x++) sum += getG(x, y);
-      row_means[y] = sum / size;
+    let tot_g = 0, max_g = 0, pk_g = 0;
+    for (let i = 0; i < num_bins; i++) {
+      tot_g += hist_g[i];
+      if (hist_g[i] > max_g) { max_g = hist_g[i]; pk_g = i; }
     }
-    for (let x = 0; x < size; x++) {
-      let sum = 0;
-      for (let y = 0; y < size; y++) sum += getG(x, y);
-      col_means[x] = sum / size;
-    }
+    const peak_ratio_g = tot_g > 0 ? (max_g / ((tot_g / num_bins) + 1e-5)) : 1.0;
+    const main_g = hist_g[pk_g] + hist_g[(pk_g + num_bins - 1) % num_bins] + hist_g[(pk_g + 1) % num_bins];
+    const cone_g = tot_g > 0 ? (main_g / (tot_g + 1e-5)) : 0.16;
+    const diag_g =
+      hist_g[(pk_g + num_bins - 4) % num_bins] +
+      hist_g[(pk_g + num_bins - 3) % num_bins] +
+      hist_g[(pk_g + 3) % num_bins] +
+      hist_g[(pk_g + 4) % num_bins];
+    const pinnate_ratio = diag_g / (main_g + 1e-5);
 
-    let rowMeanAvg = 0, colMeanAvg = 0;
+    let coh_w_sum = 0, w_sum = 0, high_coh_blocks = 0, active_blocks = 0, c2_sum = 0, s2_sum = 0;
+    for (let bi = 0; bi < 36; bi++) {
+      if (b_gcnt[bi] < 60) continue;
+      const xx = b_jxx[bi], yy = b_jyy[bi], xy = b_jxy[bi];
+      const tr = xx + yy;
+      if (tr < 500) continue;
+      const coh = Math.sqrt((xx - yy) * (xx - yy) + 4.0 * xy * xy) / (tr + 1e-5);
+      const ang = 0.5 * Math.atan2(2.0 * xy, xx - yy);
+      coh_w_sum += coh * tr;
+      w_sum += tr;
+      active_blocks++;
+      if (coh > 0.56) high_coh_blocks++;
+      c2_sum += tr * Math.cos(2.0 * ang);
+      s2_sum += tr * Math.sin(2.0 * ang);
+    }
+    const mean_bcoh = w_sum > 0 ? (coh_w_sum / w_sum) : 0.0;
+    const high_coh_frac = active_blocks > 0 ? (high_coh_blocks / active_blocks) : 0.0;
+    const ang_agree = w_sum > 0 ? (Math.sqrt(c2_sum * c2_sum + s2_sum * s2_sum) / w_sum) : 0.0;
+
+    let rm_avg = 0, cm_avg = 0;
     for (let i = 0; i < size; i++) {
-      rowMeanAvg += row_means[i];
-      colMeanAvg += col_means[i];
+      row_g[i] /= size;
+      col_g[i] /= size;
+      rm_avg += row_g[i];
+      cm_avg += col_g[i];
     }
-    rowMeanAvg /= size;
-    colMeanAvg /= size;
-
+    rm_avg /= size;
+    cm_avg /= size;
     let row_var = 0, col_var = 0;
     for (let i = 0; i < size; i++) {
-      row_var += (row_means[i] - rowMeanAvg) ** 2;
-      col_var += (col_means[i] - colMeanAvg) ** 2;
+      row_var += (row_g[i] - rm_avg) ** 2;
+      col_var += (col_g[i] - cm_avg) ** 2;
     }
     row_var /= size;
     col_var /= size;
-
     const profile_ratio = Math.max(row_var, col_var) / (Math.min(row_var, col_var) + 1e-4);
 
+    const N = size * size;
     const total_foliar = green_px + stripe_yellow + brown_rust + powdery_white + septoria_tan;
-    const foliar_pct = total_foliar / (size * size);
+    const foliar_pct = total_foliar / N;
 
-    if (foliar_pct < 0.35) {
+    if (foliar_pct < 0.35 || (green_px < 1800 && stripe_yellow < 400) || (non_plant_vivid / N > 0.35)) {
       return {
         isWheat: false,
         errorType: 'NON_PLANT',
-        messageEn: 'The uploaded image does not contain recognizable plant foliage.',
-        messageHi: 'अपलोड की गई फोटो में पौधे की पत्ती नहीं पाई गई।'
+        messageEn: 'The uploaded image does not contain recognizable wheat plant foliage.',
+        messageHi: 'अपलोड की गई फोटो में गेहूं के पौधे की पत्ती नहीं पाई गई।'
       };
     }
 
@@ -1230,6 +1306,64 @@ class WheatVisionEngine {
       };
     }
 
+    const gcnt = Math.max(1, green_px);
+    const gh_mean = (green_h_sum / gcnt) / 180.0;
+    const gh_var = Math.max(0.0, (green_h_sq / gcnt) - (green_h_sum / gcnt) ** 2);
+    const gh_std = Math.sqrt(gh_var) / 50.0;
+    const gs_mean = green_s_sum / gcnt;
+    const gv_mean = green_v_sum / gcnt;
+    const ge_mean = (green_e_sum / gcnt) / 255.0;
+    const c_green_frac = center_green / 4096.0;
+    const b_green_frac = border_green / 6784.0;
+
+    const weights = [
+      2.978174, 11.242965, -6.993803, -1.181372, 1.593047, -35.517831,
+      3.158534, -2.410670, 0.546169, 5.498374, 0.609326, -8.396647,
+      0.040359, -2.343539, 4.687147, -0.697977, -1.293279, 1.288970,
+      -2.260799, 1.311390, 5.540455, -1.327158, -1.364465, 1.645384,
+      -0.573167, 2.003722, -2.123623
+    ];
+    const feats = [
+      green_px / N,
+      stripe_yellow / N,
+      brown_rust / N,
+      powdery_white / N,
+      septoria_tan / N,
+      dark_rot / N,
+      studio_bg / N,
+      non_plant_vivid / N,
+      peak_ratio,
+      cone_r,
+      peak_ratio_g,
+      cone_g,
+      pinnate_ratio,
+      mean_bcoh,
+      high_coh_frac,
+      ang_agree,
+      c_green_frac,
+      b_green_frac,
+      c_green_frac - b_green_frac,
+      Math.log1p(profile_ratio),
+      (row_trans + col_trans) / N,
+      Math.max(row_trans, col_trans) / (Math.min(row_trans, col_trans) + 1.0),
+      gh_mean,
+      gh_std,
+      gs_mean,
+      gv_mean,
+      ge_mean
+    ];
+    let logit = -5.984513;
+    for (let i = 0; i < weights.length; i++) logit += weights[i] * feats[i];
+
+    if (logit < 0.0) {
+      return {
+        isWheat: false,
+        errorType: 'NOT_WHEAT_LEAF',
+        messageEn: 'The uploaded image is a normal broadleaf plant, not a wheat leaf blade (Triticum / Poaceae). Please upload or capture a clear photo of a wheat plant.',
+        messageHi: 'यह फोटो सामान्य चौड़ी पत्ती वाले पौधे की है, गेहूं के पौधे (ट्रिटिकम / पोएसी) की नहीं है। कृपया केवल गेहूं की पत्ती की फोटो लें।'
+      };
+    }
+
     return {
       isWheat: true,
       errorType: 'WHEAT_LEAF',
@@ -1239,11 +1373,64 @@ class WheatVisionEngine {
   }
 
   /**
-   * Full On-Device Wheat Leaf Analysis & Heatmap Synthesis
+   * Dual-Stage Wheat-Only Gatekeeper used for BOTH gallery uploads and live camera frames:
+   * Stage 1: 120x120 Poaceae Monocot & Parallel-Venation Structure-Tensor Validator (`validateWheatLeafImage`)
+   * Stage 2: MobileNetV2 1280-D Deep Feature Wheat Recognizer (`window.WheatClassifier`)
+   * Returns { isWheat, source, probability?, errorType?, messageEn?, messageHi? }.
    */
-  static async analyze(imageInput, wheatType = 'breadWheat', lang = 'hi') {
+  static async verifyWheat(imageInput) {
     const imgElement = await this.loadImage(imageInput);
+    return this.verifyWheatElement(imgElement);
+  }
+
+  static async verifyWheatElement(imgElement) {
     const val = this.validateWheatLeafImage(imgElement);
+    // Immediately reject non-plant images (rooms, faces, cars, objects without foliage)
+    if (!val.isWheat && val.errorType === 'NON_PLANT') {
+      val.source = 'heuristic';
+      return val;
+    }
+
+    if (window.WheatClassifier) {
+      try {
+        const c = await window.WheatClassifier.classify(imgElement);
+        if (!c.isWheat) {
+          return {
+            isWheat: false,
+            source: 'classifier',
+            probability: c.probability,
+            errorType: 'NOT_WHEAT_LEAF',
+            messageEn: 'This photo is a normal plant (or non-wheat object), not a wheat plant. Wheat Doctor only analyses wheat (Triticum) leaves and plants — please upload or capture a wheat leaf.',
+            messageHi: 'यह फोटो सामान्य पौधे की है, गेहूं के पौधे की नहीं। गेहूं डॉक्टर केवल गेहूं (ट्रिटिकम) की पत्ती/पौधे की जांच करता है — कृपया गेहूं की पत्ती की फोटो लें।'
+          };
+        }
+        // High-confidence neural match OR agreement with Poaceae parallel-venation validator
+        if (c.probability >= 0.72 || val.isWheat) {
+          return { isWheat: true, source: 'classifier', probability: c.probability };
+        }
+        return {
+          isWheat: false,
+          source: 'dual-gate',
+          probability: c.probability,
+          errorType: 'NOT_WHEAT_LEAF',
+          messageEn: val.messageEn,
+          messageHi: val.messageHi
+        };
+      } catch (err) {
+        console.warn('Neural wheat recogniser unavailable, using Poaceae validator:', err);
+      }
+    }
+    val.source = 'heuristic';
+    return val;
+  }
+
+  /**
+   * Full On-Device Wheat Leaf Analysis & Heatmap Synthesis
+   * opts.skipValidation: set when the caller already ran verifyWheat() successfully.
+   */
+  static async analyze(imageInput, wheatType = 'breadWheat', lang = 'hi', opts = {}) {
+    const imgElement = await this.loadImage(imageInput);
+    const val = opts.skipValidation ? { isWheat: true } : await this.verifyWheatElement(imgElement);
     if (!val.isWheat) {
       return {
         status: 'error',

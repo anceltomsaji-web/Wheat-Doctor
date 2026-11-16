@@ -210,6 +210,7 @@ def analyze():
         image_data = None
         lang = request.form.get('lang', 'en')
         wheat_type = request.form.get('wheat_type', 'breadWheat')
+        skip_validation = request.form.get('skip_validation', '') in ('1', 'true', 'True')
 
         if 'image' in request.files:
             file = request.files['image']
@@ -219,13 +220,14 @@ def analyze():
             image_data = data.get('image')
             lang = data.get('lang', lang)
             wheat_type = data.get('wheat_type', wheat_type)
+            skip_validation = bool(data.get('skip_validation', False))
         elif 'image' in request.form:
             image_data = request.form.get('image')
 
         if not image_data:
             return jsonify({'status': 'error', 'message': 'No wheat leaf image provided.'}), 400
 
-        result = analyze_wheat_leaf_image(image_data, wheat_type=wheat_type)
+        result = analyze_wheat_leaf_image(image_data, wheat_type=wheat_type, skip_validation=skip_validation)
         if result.get('status') == 'error':
             result['selectedLang'] = lang
             return jsonify(result), 200

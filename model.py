@@ -4,10 +4,22 @@ import math
 import base64
 from PIL import Image, ImageDraw, ImageFilter
 
+# Trained 27-Feature Poaceae Monocot vs Broadleaf/Normal-Plant Linear Discriminant Weights
+_WHEAT_120_WEIGHTS = (
+    2.978174, 11.242965, -6.993803, -1.181372, 1.593047, -35.517831,
+    3.158534, -2.410670, 0.546169, 5.498374, 0.609326, -8.396647,
+    0.040359, -2.343539, 4.687147, -0.697977, -1.293279, 1.288970,
+    -2.260799, 1.311390, 5.540455, -1.327158, -1.364465, 1.645384,
+    -0.573167, 2.003722, -2.123623,
+)
+_WHEAT_120_BIAS = -5.984513
+
+
 def validate_wheat_leaf_image(pil_img):
     """
-    Validates that the uploaded image belongs to a Wheat plant (Poaceae monocot blade)
-    and rejects non-plant objects or broadleaf dicot crops (potato, tomato, cucumber, etc.).
+    Validates that the uploaded or camera-captured image belongs to a Wheat plant
+    (Poaceae monocot blade) and strictly rejects non-plant objects and normal broadleaf
+    plants (houseplants, tomato, potato, rose, mango, hibiscus, trees, flowers, etc.).
     Returns (is_wheat, error_type, message_en, message_hi).
     """
     img = pil_img.convert('RGB')
@@ -25,23 +37,74 @@ def validate_wheat_leaf_image(pil_img):
     septoria_tan = 0
     green_px = 0
     dark_rot = 0
+    studio_bg = 0
+    non_plant_vivid = 0
+    center_green = 0
+    border_green = 0
+    green_h_sum = 0.0
+    green_h_sq = 0.0
+    green_s_sum = 0.0
+    green_v_sum = 0.0
+    green_e_sum = 0.0
 
-    angles, magnitudes = [], []
+    num_bins = 18
+    hist_r = [0.0] * num_bins
+    hist_g = [0.0] * num_bins
+
+    b_jxx = [0.0] * 36
+    b_jyy = [0.0] * 36
+    b_jxy = [0.0] * 36
+    b_gcnt = [0] * 36
+
+    row_g = [0.0] * size
+    col_g = [0.0] * size
+    row_trans = 0
+    col_trans = 0
+    prev_row_g = [0] * size
 
     for y in range(size):
+        prev_g_x = 0
         for x in range(size):
             r, g, b = px[x, y]
+            row_g[y] += g
+            col_g[x] += g
             h, s, v = rgb_to_hsv(r, g, b)
+            ev = epx[x, y]
+
             is_plain_bg = (r > 240 and g > 240 and b > 240) or (r < 20 and g < 20 and b < 20) or (s < 0.04)
-            is_green = (g >= r * 1.05 and g >= b * 1.05 and g > 30) or (h >= 62 and h <= 170 and s > 0.14)
+            is_green = (g >= r * 1.05 and g >= b * 1.05 and g > 30) or (62 <= h <= 170 and s > 0.14 and v > 0.12)
             is_mildew = (not is_plain_bg) and (s < 0.30 and v > 0.45 and abs(r - g) < 28 and abs(g - b) < 28 and (r > 105 or g > 105))
             is_pycnidia_black = (r < 48 and g < 48 and b < 48 and v < 0.20 and not is_plain_bg)
-            is_stripe_yellow = (h >= 36 and h <= 58 and s > 0.58 and v > 0.48)
-            is_brown_rust = (h >= 12 and h < 35 and s > 0.35 and v > 0.20 and r > b * 1.25)
-            is_septoria_tan = (h >= 22 and h < 55 and s > 0.22 and v > 0.30 and epx[x, y] > 22)
+            is_stripe_yellow = (36 <= h <= 58 and s > 0.58 and v > 0.48)
+            is_brown_rust = (12 <= h < 35 and s > 0.35 and v > 0.20 and r > b * 1.25)
+            is_septoria_tan = (22 <= h < 55 and s > 0.22 and v > 0.30 and ev > 22)
             is_dark_rot = (v < 0.25 and r > 30 and g < 50)
 
-            if is_green: green_px += 1
+            if not is_green and s < 0.20 and 0.26 < v < 0.86 and ev < 38:
+                studio_bg += 1
+            if (h < 14 or h > 178) and s > 0.22 and v > 0.22:
+                non_plant_vivid += 1
+
+            g_flag = 1 if is_green else 0
+            if x > 0 and g_flag != prev_g_x:
+                row_trans += 1
+            prev_g_x = g_flag
+            if y > 0 and g_flag != prev_row_g[x]:
+                col_trans += 1
+            prev_row_g[x] = g_flag
+
+            if is_green:
+                green_px += 1
+                green_h_sum += h
+                green_h_sq += h * h
+                green_s_sum += s
+                green_v_sum += v
+                green_e_sum += ev
+                if 28 <= x < 92 and 28 <= y < 92:
+                    center_green += 1
+                if x < 16 or x >= 104 or y < 16 or y >= 104:
+                    border_green += 1
+
             if is_stripe_yellow: stripe_yellow += 1
             if is_brown_rust: brown_rust += 1
             if is_mildew: powdery_white += 1
@@ -55,35 +118,81 @@ def validate_wheat_leaf_image(pil_img):
                      (int(px[x - 1, y - 1][0]) + 2 * int(px[x, y - 1][0]) + int(px[x + 1, y - 1][0]))
                 mag = math.sqrt(dx * dx + dy * dy)
                 if mag > 20:
-                    angles.append(math.atan2(dy, dx))
-                    magnitudes.append(mag)
+                    a = math.atan2(dy, dx) % math.pi
+                    bi = int(a / (math.pi / num_bins)) % num_bins
+                    hist_r[bi] += mag
 
-    num_bins = 18
-    hist = [0] * num_bins
-    total_mag = sum(magnitudes)
-    if total_mag > 0:
-        for ang, mag in zip(angles, magnitudes):
-            a = ang % math.pi
-            b = int(a / (math.pi / num_bins)) % num_bins
-            hist[b] += mag
-        peak_ratio = max(hist) / ((total_mag / num_bins) + 1e-5)
-    else:
-        peak_ratio = 1.0
+                if is_green:
+                    gdx = (int(px[x + 1, y - 1][1]) + 2 * int(px[x + 1, y][1]) + int(px[x + 1, y + 1][1])) - \
+                          (int(px[x - 1, y - 1][1]) + 2 * int(px[x - 1, y][1]) + int(px[x - 1, y + 1][1]))
+                    gdy = (int(px[x - 1, y + 1][1]) + 2 * int(px[x, y + 1][1]) + int(px[x + 1, y + 1][1])) - \
+                          (int(px[x - 1, y - 1][1]) + 2 * int(px[x, y - 1][1]) + int(px[x + 1, y - 1][1]))
+                    gmag = math.sqrt(gdx * gdx + gdy * gdy)
+                    if gmag > 18:
+                        ga = math.atan2(gdy, gdx) % math.pi
+                        gbi = int(ga / (math.pi / num_bins)) % num_bins
+                        hist_g[gbi] += gmag
+                    bidx = (y // 20) * 6 + (x // 20)
+                    b_jxx[bidx] += gdx * gdx
+                    b_jyy[bidx] += gdy * gdy
+                    b_jxy[bidx] += gdx * gdy
+                    b_gcnt[bidx] += 1
 
-    row_means = [sum(px[x, y][1] for x in range(size)) / size for y in range(size)]
-    col_means = [sum(px[x, y][1] for y in range(size)) / size for x in range(size)]
-    row_var = sum((v - sum(row_means) / size) ** 2 for v in row_means) / size
-    col_var = sum((v - sum(col_means) / size) ** 2 for v in col_means) / size
+    tot_r = sum(hist_r)
+    peak_ratio = (max(hist_r) / ((tot_r / num_bins) + 1e-5)) if tot_r > 0 else 1.0
+    pk_r = hist_r.index(max(hist_r)) if tot_r > 0 else 0
+    cone_r = ((hist_r[pk_r] + hist_r[(pk_r - 1) % num_bins] + hist_r[(pk_r + 1) % num_bins]) / (tot_r + 1e-5)) if tot_r > 0 else 0.16
+
+    tot_g = sum(hist_g)
+    peak_ratio_g = (max(hist_g) / ((tot_g / num_bins) + 1e-5)) if tot_g > 0 else 1.0
+    pk_g = hist_g.index(max(hist_g)) if tot_g > 0 else 0
+    cone_g = ((hist_g[pk_g] + hist_g[(pk_g - 1) % num_bins] + hist_g[(pk_g + 1) % num_bins]) / (tot_g + 1e-5)) if tot_g > 0 else 0.16
+    diag_g = sum(hist_g[(pk_g + d) % num_bins] for d in (-4, -3, 3, 4))
+    pinnate_ratio = diag_g / (hist_g[pk_g] + hist_g[(pk_g - 1) % num_bins] + hist_g[(pk_g + 1) % num_bins] + 1e-5)
+
+    coh_w_sum = 0.0
+    w_sum = 0.0
+    high_coh_blocks = 0
+    active_blocks = 0
+    c2_sum, s2_sum = 0.0, 0.0
+    for bi in range(36):
+        if b_gcnt[bi] < 60:
+            continue
+        xx, yy, xy = b_jxx[bi], b_jyy[bi], b_jxy[bi]
+        tr = xx + yy
+        if tr < 500:
+            continue
+        coh = math.sqrt((xx - yy) ** 2 + 4.0 * xy * xy) / (tr + 1e-5)
+        ang = 0.5 * math.atan2(2.0 * xy, xx - yy)
+        coh_w_sum += coh * tr
+        w_sum += tr
+        active_blocks += 1
+        if coh > 0.56:
+            high_coh_blocks += 1
+        c2_sum += tr * math.cos(2.0 * ang)
+        s2_sum += tr * math.sin(2.0 * ang)
+
+    mean_bcoh = (coh_w_sum / w_sum) if w_sum > 0 else 0.0
+    high_coh_frac = (high_coh_blocks / float(active_blocks)) if active_blocks > 0 else 0.0
+    ang_agree = (math.sqrt(c2_sum * c2_sum + s2_sum * s2_sum) / w_sum) if w_sum > 0 else 0.0
+
+    row_means = [v / size for v in row_g]
+    col_means = [v / size for v in col_g]
+    rm_avg = sum(row_means) / size
+    cm_avg = sum(col_means) / size
+    row_var = sum((v - rm_avg) ** 2 for v in row_means) / size
+    col_var = sum((v - cm_avg) ** 2 for v in col_means) / size
     profile_ratio = max(row_var, col_var) / (min(row_var, col_var) + 1e-4)
 
+    N = float(size * size)
     total_foliar = green_px + stripe_yellow + brown_rust + powdery_white + septoria_tan
-    foliar_pct = total_foliar / float(size * size)
+    foliar_pct = total_foliar / N
 
-    # 1. Non-plant rejection
-    if foliar_pct < 0.35:
-        return False, "NON_PLANT", "The uploaded image does not contain recognizable plant foliage.", "अपलोड की गई फोटो में पौधे की पत्ती नहीं पाई गई।"
+    # 1. Non-plant rejection (requires genuine chlorophyll or rust foliage)
+    if foliar_pct < 0.35 or (green_px < 1800 and stripe_yellow < 400) or (non_plant_vivid / N > 0.35):
+        return False, "NON_PLANT", "The uploaded image does not contain recognizable wheat plant foliage.", "अपलोड की गई फोटो में गेहूं के पौधे की पत्ती नहीं पाई गई।"
 
-    # 2. Broadleaf dicot checks
+    # 2. Explicit Broadleaf Dicot & Normal-Plant Morphological Gates
     if dark_rot > 450 and stripe_yellow < 150 and peak_ratio < 1.3:
         return False, "NOT_WHEAT_LEAF", "The uploaded image appears to be a broadleaf crop (e.g. Potato/Tomato) with late blight, not a wheat blade.", "अपलोड की गई फोटो गेहूं की पत्ती नहीं है (यह आलू/टमाटर जैसी चौड़ी पत्ती वाली फसल है)।"
 
@@ -98,6 +207,50 @@ def validate_wheat_leaf_image(pil_img):
 
     if green_px < 13500 and peak_ratio < 2.1 and stripe_yellow < 100 and brown_rust < 100 and septoria_tan < 400 and powdery_white < 500:
         return False, "NOT_WHEAT_LEAF", "The uploaded image is a broadleaf plant (Dicot), not a wheat crop leaf (Poaceae).", "अपलोड की गई फोटो गेहूं की फसल (पोएसी कुल) की पत्ती नहीं है।"
+
+    # 3. 27-Feature Poaceae Monocot & Parallel-Venation Structure-Tensor Classifier
+    gcnt = max(1, green_px)
+    gh_mean = (green_h_sum / gcnt) / 180.0
+    gh_var = max(0.0, (green_h_sq / gcnt) - (green_h_sum / gcnt) ** 2)
+    gh_std = math.sqrt(gh_var) / 50.0
+    gs_mean = green_s_sum / gcnt
+    gv_mean = green_v_sum / gcnt
+    ge_mean = (green_e_sum / gcnt) / 255.0
+    c_green_frac = center_green / 4096.0
+    b_green_frac = border_green / 6784.0
+
+    feats = (
+        green_px / N,
+        stripe_yellow / N,
+        brown_rust / N,
+        powdery_white / N,
+        septoria_tan / N,
+        dark_rot / N,
+        studio_bg / N,
+        non_plant_vivid / N,
+        peak_ratio,
+        cone_r,
+        peak_ratio_g,
+        cone_g,
+        pinnate_ratio,
+        mean_bcoh,
+        high_coh_frac,
+        ang_agree,
+        c_green_frac,
+        b_green_frac,
+        c_green_frac - b_green_frac,
+        math.log1p(profile_ratio),
+        (row_trans + col_trans) / N,
+        max(row_trans, col_trans) / (min(row_trans, col_trans) + 1.0),
+        gh_mean,
+        gh_std,
+        gs_mean,
+        gv_mean,
+        ge_mean,
+    )
+    logit = _WHEAT_120_BIAS + sum(w * f for w, f in zip(_WHEAT_120_WEIGHTS, feats))
+    if logit < 0.0:
+        return False, "NOT_WHEAT_LEAF", "The uploaded image is a normal broadleaf plant, not a wheat leaf blade (Triticum / Poaceae). Please upload or capture a clear photo of a wheat plant.", "यह फोटो सामान्य चौड़ी पत्ती वाले पौधे की है, गेहूं के पौधे (ट्रिटिकम / पोएसी) की नहीं है। कृपया केवल गेहूं की पत्ती की फोटो लें।"
 
     return True, "WHEAT_LEAF", "Valid Wheat Leaf", "वैध गेहूं की पत्ती"
 
@@ -876,7 +1029,7 @@ def rgb_to_hsv(r, g, b):
     s = 0 if mx == 0 else (df / mx)
     return h, s, mx
 
-def analyze_wheat_leaf_image(image_input, wheat_type='breadWheat'):
+def analyze_wheat_leaf_image(image_input, wheat_type='breadWheat', skip_validation=False):
     """
     Wheat Vision & Disease Diagnosis Engine:
     Segments linear wheat blade, classifies Yellow/Stripe Rust, Brown Rust,
@@ -898,8 +1051,12 @@ def analyze_wheat_leaf_image(image_input, wheat_type='breadWheat'):
     else:
         pil_img = image_input.convert('RGB')
 
-    # Enforce Wheat Leaf Validation (Reject non-wheat leaves or non-plant images)
-    is_wheat, error_type, msg_en, msg_hi = validate_wheat_leaf_image(pil_img)
+    # Enforce Wheat Leaf Validation (Reject non-wheat leaves or non-plant images).
+    # The browser's neural wheat recogniser already ran when skip_validation=True.
+    if skip_validation:
+        is_wheat, error_type, msg_en, msg_hi = True, 'WHEAT_LEAF', 'Valid Wheat Leaf', 'वैध गेहूं की पत्ती'
+    else:
+        is_wheat, error_type, msg_en, msg_hi = validate_wheat_leaf_image(pil_img)
     if not is_wheat:
         return {
             'status': 'error',
