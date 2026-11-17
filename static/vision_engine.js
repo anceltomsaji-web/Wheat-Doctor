@@ -1103,6 +1103,9 @@ class WheatVisionEngine {
     let row_trans = 0;
     let col_trans = 0;
     const prev_row_g = new Uint8Array(size);
+    let hi_edge_green = 0;
+    let g_peaks = 0;
+    const b_edge = new Int32Array(36);
 
     const getR = (x, y) => rgba[(y * size + x) * 4];
     const getG = (x, y) => rgba[(y * size + x) * 4 + 1];
@@ -1118,6 +1121,8 @@ class WheatVisionEngine {
         col_g[x] += g;
         const [h, s, v] = this.rgbToHsv(r, g, b);
         const ev = epx[y * size + x];
+
+        if (ev > 65) b_edge[Math.floor(y / 20) * 6 + Math.floor(x / 20)]++;
 
         const is_plain_bg = (r > 240 && g > 240 && b > 240) || (r < 20 && g < 20 && b < 20) || (s < 0.04);
         const is_green = (g >= r * 1.05 && g >= b * 1.05 && g > 30) || (h >= 62 && h <= 170 && s > 0.14 && v > 0.12);
@@ -1144,6 +1149,11 @@ class WheatVisionEngine {
           green_s_sum += s;
           green_v_sum += v;
           green_e_sum += ev;
+          if (ev > 60) hi_edge_green++;
+          if (x >= 2 && x < size - 2 && y >= 2 && y < size - 2) {
+            if (g > getG(x - 2, y) + 18 && g > getG(x + 2, y) + 18) g_peaks++;
+            if (g > getG(x, y - 2) + 18 && g > getG(x, y + 2) + 18) g_peaks++;
+          }
           if (x >= 28 && x < 92 && y >= 28 && y < 92) center_green++;
           if (x < 16 || x >= 104 || y < 16 || y >= 104) border_green++;
         }
@@ -1306,6 +1316,30 @@ class WheatVisionEngine {
       };
     }
 
+    const hi_edge_frac = hi_edge_green / Math.max(1, green_px);
+    const b_edge_sorted = Array.from(b_edge, (e) => e / 400.0).sort((a, b) => a - b);
+    let min_smooth_block = 0.0;
+    for (let i = 0; i < 6; i++) min_smooth_block += b_edge_sorted[i];
+    min_smooth_block /= 6.0;
+
+    if (hi_edge_frac > 0.215 || g_peaks > 1350 || min_smooth_block > 0.150) {
+      return {
+        isWheat: false,
+        errorType: 'NOT_WHEAT_LEAF',
+        messageEn: 'This image appears to be lawn grass, turf, or dense plant clutter rather than a wheat leaf blade. Please upload or capture a clear close-up photo of a wheat leaf.',
+        messageHi: 'यह फोटो सामान्य घास (लॉन ग्रास) या झाड़ी की है, गेहूं की पत्ती की नहीं है। कृपया गेहूं की पत्ती की साफ फोटो लें।'
+      };
+    }
+
+    if (g_peaks < 110 || min_smooth_block < 0.006 || mean_bcoh < 0.45 || high_coh_frac < 0.28) {
+      return {
+        isWheat: false,
+        errorType: 'NOT_WHEAT_LEAF',
+        messageEn: 'The uploaded image is a normal non-wheat plant leaf, not a wheat leaf blade (Triticum / Poaceae). Please upload or capture a clear photo of a wheat plant.',
+        messageHi: 'यह फोटो सामान्य पौधे की पत्ती है, गेहूं के पौधे (ट्रिटिकम / पोएसी) की नहीं है। कृपया केवल गेहूं की पत्ती की फोटो लें।'
+      };
+    }
+
     const gcnt = Math.max(1, green_px);
     const gh_mean = (green_h_sum / gcnt) / 180.0;
     const gh_var = Math.max(0.0, (green_h_sq / gcnt) - (green_h_sum / gcnt) ** 2);
@@ -1385,12 +1419,13 @@ class WheatVisionEngine {
 
   static async verifyWheatElement(imgElement) {
     const val = this.validateWheatLeafImage(imgElement);
-    // Immediately reject non-plant images (rooms, faces, cars, objects without foliage)
-    if (!val.isWheat && val.errorType === 'NON_PLANT') {
+    // Stage 1 MUST ALWAYS pass: if the morphological/venation/turfgrass validator rejects the image, decline immediately!
+    if (!val.isWheat) {
       val.source = 'heuristic';
       return val;
     }
 
+    // Stage 2: If the neural classifier is available, it must ALSO confirm a wheat plant!
     if (window.WheatClassifier) {
       try {
         const c = await window.WheatClassifier.classify(imgElement);
@@ -1404,18 +1439,7 @@ class WheatVisionEngine {
             messageHi: 'यह फोटो सामान्य पौधे की है, गेहूं के पौधे की नहीं। गेहूं डॉक्टर केवल गेहूं (ट्रिटिकम) की पत्ती/पौधे की जांच करता है — कृपया गेहूं की पत्ती की फोटो लें।'
           };
         }
-        // High-confidence neural match OR agreement with Poaceae parallel-venation validator
-        if (c.probability >= 0.72 || val.isWheat) {
-          return { isWheat: true, source: 'classifier', probability: c.probability };
-        }
-        return {
-          isWheat: false,
-          source: 'dual-gate',
-          probability: c.probability,
-          errorType: 'NOT_WHEAT_LEAF',
-          messageEn: val.messageEn,
-          messageHi: val.messageHi
-        };
+        return { isWheat: true, source: 'dual-gate', probability: c.probability };
       } catch (err) {
         console.warn('Neural wheat recogniser unavailable, using Poaceae validator:', err);
       }
@@ -1426,11 +1450,10 @@ class WheatVisionEngine {
 
   /**
    * Full On-Device Wheat Leaf Analysis & Heatmap Synthesis
-   * opts.skipValidation: set when the caller already ran verifyWheat() successfully.
    */
   static async analyze(imageInput, wheatType = 'breadWheat', lang = 'hi', opts = {}) {
     const imgElement = await this.loadImage(imageInput);
-    const val = opts.skipValidation ? { isWheat: true } : await this.verifyWheatElement(imgElement);
+    const val = await this.verifyWheatElement(imgElement);
     if (!val.isWheat) {
       return {
         status: 'error',

@@ -27,11 +27,19 @@
     return new Promise((resolve, reject) => {
       const req = new XMLHttpRequest();
       req.open('GET', url, true);
-      req.responseType = type;
+      req.responseType = type === 'json' ? 'text' : type;
       req.onload = () => {
         // file:// (Android assets) reports status 0 on success
-        if ((req.status >= 200 && req.status < 300) || (req.status === 0 && req.response)) {
-          resolve(req.response);
+        if ((req.status >= 200 && req.status < 300) || (req.status === 0 && (req.response || req.responseText))) {
+          if (type === 'json') {
+            try {
+              resolve(JSON.parse(req.responseText));
+            } catch (e) {
+              reject(e);
+            }
+          } else {
+            resolve(req.response);
+          }
         } else {
           reject(new Error('HTTP ' + req.status + ' for ' + url));
         }
