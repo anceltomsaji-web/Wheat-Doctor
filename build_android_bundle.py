@@ -151,6 +151,8 @@ window.WHEAT_DISEASES_DATABASE = __DISEASES_JSON__;
 
 window.WHEAT_SAMPLES_LIST = __SAMPLES_JSON__;
 
+window.WHEAT_CLASSIFIER_HEAD = __WHEAT_HEAD_JSON__;
+
 class WheatVisionEngine {
   /**
    * Converts 8-bit RGB [0..255] to HSV:
@@ -810,11 +812,15 @@ def generate_vision_engines():
         item['path'] = 'static/samples/' + item['filename']
         samples_rel.append(item)
 
+    head_path = os.path.join(BASE_DIR, "static", "models", "wheat_head.json")
+    head_json_str = open(head_path, "r", encoding="utf-8").read().strip() if os.path.exists(head_path) else "null"
+
     root_js = (
         VISION_ENGINE_JS_TEMPLATE
         .replace("__TAXONOMY_JSON__", json.dumps(WHEAT_TAXONOMY, ensure_ascii=False, indent=2))
         .replace("__DISEASES_JSON__", json.dumps(WHEAT_DISEASES_DB, ensure_ascii=False, indent=2))
         .replace("__SAMPLES_JSON__", json.dumps(samples_rel, ensure_ascii=False, indent=2))
+        .replace("__WHEAT_HEAD_JSON__", head_json_str)
     )
     with open(os.path.join(BASE_DIR, "static", "vision_engine.js"), "w", encoding="utf-8") as f:
         f.write(root_js)
@@ -824,6 +830,7 @@ def generate_vision_engines():
         .replace("__TAXONOMY_JSON__", json.dumps(PROTO_TAXONOMY, ensure_ascii=False, indent=2))
         .replace("__DISEASES_JSON__", json.dumps(PROTO_DISEASES_DB, ensure_ascii=False, indent=2))
         .replace("__SAMPLES_JSON__", json.dumps(samples_rel, ensure_ascii=False, indent=2))
+        .replace("__WHEAT_HEAD_JSON__", head_json_str)
     )
     with open(os.path.join(BASE_DIR, "prototype", "static", "vision_engine.js"), "w", encoding="utf-8") as f:
         f.write(proto_js)

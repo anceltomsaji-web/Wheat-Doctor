@@ -19,7 +19,12 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import StratifiedGroupKFold
 from sklearn.preprocessing import StandardScaler
 
-TARGET_SPECIFICITY = 0.96
+TARGET_SPECIFICITY = 0.985
+
+HARD_NEG_KEYWORDS = (
+    "hard_neg/", "lawn_grass", "maize", "corn", "rice_plant", "bamboo",
+    "sugarcane", "pothole_leaf", "houseplant", "cabbage", "cucumber", "rose_leaf",
+)
 
 
 def load(paths):
@@ -32,12 +37,18 @@ def load(paths):
                     continue
                 for it in json.loads(line):
                     kid = it["id"]
+                    low = kid.lower()
+                    # Filter noisy positives so only genuine wheat leaf/plant photos are positive
                     if kid.startswith("wheat/"):
-                        low = kid.lower()
-                        if not any(w in low for w in ("leaf", "rust", "mildew", "triticum")):
+                        if "field" in low or not any(w in low for w in ("leaf", "rust", "mildew", "triticum")):
+                            continue
+                    if kid.startswith("pos_gh/"):
+                        if not any(w in low for w in ("wheat_health", "wheat_leaf_r")):
                             continue
                     if "/app_" in kid or kid.startswith("app_"):
-                        it["weight"] = 8.0
+                        it["weight"] = 12.0
+                    elif any(k in low for k in HARD_NEG_KEYWORDS):
+                        it["weight"] = 15.0
                     items[kid] = it
     return list(items.values())
 
@@ -84,7 +95,7 @@ def main():
     print("images: %d wheat, %d non-wheat; samples: %d" % (n_pos, len(items) - n_pos, len(X)))
 
     best = None
-    for C in (0.005, 0.01, 0.03, 0.05, 0.1, 0.3):
+    for C in (0.01, 0.03, 0.05, 0.1, 0.2):
         skf = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=42)
         oof = {}
         for tr, te in skf.split(X, y, g):
@@ -95,7 +106,7 @@ def main():
         t = np.array([labels[i] for i in gi_sorted])
         neg = np.sort(s[t == 0])
         k = int(np.ceil(TARGET_SPECIFICITY * len(neg))) - 1
-        thr = float(min(0.95, max(0.55, neg[k] + 1e-6)))
+        thr = float(min(0.92, max(0.62, neg[k] + 1e-6)))
         recall = float((s[t == 1] >= thr).mean())
         spec = float((s[t == 0] < thr).mean())
         print("C=%-6g thr=%.3f  wheat recall=%.3f  non-wheat rejected=%.3f" % (C, thr, recall, spec))
@@ -106,8 +117,13 @@ def main():
     print("chosen C=%g threshold=%.3f (cv wheat recall %.3f, non-wheat rejection %.3f)" % (C, thr, recall, spec))
 
     sc, clf = fit(X, y, w, C)
+    full_scores = image_scores(sc, clf, X, g, v)
+    for gi, it in enumerate(items):
+        if it["id"].startswith(("app_pos/", "app_neg/", "hard_neg/")):
+            print("  %-38s prob=%.4f (thr=%.3f)" % (it["id"], full_scores[gi], thr))
+
     head = {
-        "version": 1,
+        "version": 2,
         "backbone": "mobilenet_v2_100_224 feature_vector (TF-Hub, input range [0,1])",
         "weights": [round(float(x), 6) for x in clf.coef_[0]],
         "bias": round(float(clf.intercept_[0]), 6),

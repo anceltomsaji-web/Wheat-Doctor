@@ -88,7 +88,9 @@
       }
       await tf.ready();
       backbone = await loadBackbone(opts.backboneUrl || BACKBONE_URL);
-      if (!opts.skipHead) head = await xhr(opts.headUrl || HEAD_URL, 'json');
+      if (!opts.skipHead) {
+        head = global.WHEAT_CLASSIFIER_HEAD || await xhr(opts.headUrl || HEAD_URL, 'json');
+      }
       return true;
     })().catch((err) => {
       loadPromise = null;
