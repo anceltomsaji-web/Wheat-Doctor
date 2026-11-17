@@ -61,6 +61,9 @@ def validate_wheat_leaf_image(pil_img):
     row_trans = 0
     col_trans = 0
     prev_row_g = [0] * size
+    hi_edge_green = 0
+    g_peaks = 0
+    b_edge = [0] * 36
 
     for y in range(size):
         prev_g_x = 0
@@ -70,6 +73,9 @@ def validate_wheat_leaf_image(pil_img):
             col_g[x] += g
             h, s, v = rgb_to_hsv(r, g, b)
             ev = epx[x, y]
+
+            if ev > 65:
+                b_edge[(y // 20) * 6 + (x // 20)] += 1
 
             is_plain_bg = (r > 240 and g > 240 and b > 240) or (r < 20 and g < 20 and b < 20) or (s < 0.04)
             is_green = (g >= r * 1.05 and g >= b * 1.05 and g > 30) or (62 <= h <= 170 and s > 0.14 and v > 0.12)
@@ -100,6 +106,13 @@ def validate_wheat_leaf_image(pil_img):
                 green_s_sum += s
                 green_v_sum += v
                 green_e_sum += ev
+                if ev > 60:
+                    hi_edge_green += 1
+                if 2 <= x < size - 2 and 2 <= y < size - 2:
+                    if g > px[x - 2, y][1] + 18 and g > px[x + 2, y][1] + 18:
+                        g_peaks += 1
+                    if g > px[x, y - 2][1] + 18 and g > px[x, y + 2][1] + 18:
+                        g_peaks += 1
                 if 28 <= x < 92 and 28 <= y < 92:
                     center_green += 1
                 if x < 16 or x >= 104 or y < 16 or y >= 104:
@@ -208,7 +221,18 @@ def validate_wheat_leaf_image(pil_img):
     if green_px < 13500 and peak_ratio < 2.1 and stripe_yellow < 100 and brown_rust < 100 and septoria_tan < 400 and powdery_white < 500:
         return False, "NOT_WHEAT_LEAF", "The uploaded image is a broadleaf plant (Dicot), not a wheat crop leaf (Poaceae).", "अपलोड की गई फोटो गेहूं की फसल (पोएसी कुल) की पत्ती नहीं है।"
 
-    # 3. 27-Feature Poaceae Monocot & Parallel-Venation Structure-Tensor Classifier
+    # 3. Lawn Grass / Turf / Shrub Clutter & Non-Wheat Venation Continuity Gates
+    hi_edge_frac = hi_edge_green / float(max(1, green_px))
+    b_edge_sorted = sorted(e / 400.0 for e in b_edge)
+    min_smooth_block = sum(b_edge_sorted[:6]) / 6.0
+
+    if hi_edge_frac > 0.215 or g_peaks > 1350 or min_smooth_block > 0.150:
+        return False, "NOT_WHEAT_LEAF", "This image appears to be lawn grass, turf, or dense plant clutter rather than a wheat leaf blade. Please upload or capture a clear close-up photo of a wheat leaf.", "यह फोटो सामान्य घास (लॉन ग्रास) या झाड़ी की है, गेहूं की पत्ती की नहीं है। कृपया गेहूं की पत्ती की साफ फोटो लें।"
+
+    if g_peaks < 110 or min_smooth_block < 0.006 or mean_bcoh < 0.45 or high_coh_frac < 0.28:
+        return False, "NOT_WHEAT_LEAF", "The uploaded image is a normal non-wheat plant leaf, not a wheat leaf blade (Triticum / Poaceae). Please upload or capture a clear photo of a wheat plant.", "यह फोटो सामान्य पौधे की पत्ती है, गेहूं के पौधे (ट्रिटिकम / पोएसी) की नहीं है। कृपया केवल गेहूं की पत्ती की फोटो लें।"
+
+    # 4. 27-Feature Poaceae Monocot & Parallel-Venation Structure-Tensor Classifier
     gcnt = max(1, green_px)
     gh_mean = (green_h_sum / gcnt) / 180.0
     gh_var = max(0.0, (green_h_sq / gcnt) - (green_h_sum / gcnt) ** 2)
@@ -1051,12 +1075,8 @@ def analyze_wheat_leaf_image(image_input, wheat_type='breadWheat', skip_validati
     else:
         pil_img = image_input.convert('RGB')
 
-    # Enforce Wheat Leaf Validation (Reject non-wheat leaves or non-plant images).
-    # The browser's neural wheat recogniser already ran when skip_validation=True.
-    if skip_validation:
-        is_wheat, error_type, msg_en, msg_hi = True, 'WHEAT_LEAF', 'Valid Wheat Leaf', 'वैध गेहूं की पत्ती'
-    else:
-        is_wheat, error_type, msg_en, msg_hi = validate_wheat_leaf_image(pil_img)
+    # Always enforce Wheat Leaf Validation (never allow bypassing validation)
+    is_wheat, error_type, msg_en, msg_hi = validate_wheat_leaf_image(pil_img)
     if not is_wheat:
         return {
             'status': 'error',
